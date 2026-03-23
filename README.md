@@ -8,8 +8,11 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 
 ## QQ群
+- 交流群:291638849
+- https://qm.qq.com/q/ZTCKxawxeo
 
-- 交流群: https://qm.qq.com/q/ZTCKxawxeo
+## Telegram交流频道
+- https://t.me/cysq2026
 
 ## 致谢
 
