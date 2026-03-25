@@ -869,8 +869,8 @@ async def start_batch_registration(
     - interval_max: 最大间隔秒数
     """
     # 验证参数
-    if request.count < 1 or request.count > 100:
-        raise HTTPException(status_code=400, detail="注册数量必须在 1-100 之间")
+    if request.count < 1 or request.count > 1000:
+        raise HTTPException(status_code=400, detail="注册数量必须在 1-1000 之间")
 
     try:
         EmailServiceType(request.email_service_type)
