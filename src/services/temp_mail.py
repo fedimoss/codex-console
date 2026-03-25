@@ -8,6 +8,7 @@ import re
 import time
 import json
 import logging
+from datetime import datetime, timezone
 from email import message_from_string
 from email.header import decode_header, make_header
 from email.message import Message
@@ -67,6 +68,10 @@ class TempMailService(BaseEmailService):
 
         # 邮箱缓存：email -> {jwt, address}
         self._email_cache: Dict[str, Dict[str, Any]] = {}
+
+        # 已使用验证码缓存：避免同邮箱重复返回旧验证码（兜底）
+        # 说明：这是进程内缓存，重启会丢失；建议与 otp_sent_at 过滤配合使用
+        self._used_codes: Dict[str, set] = {}
 
     def _decode_mime_header(self, value: str) -> str:
         """解码 MIME 头，兼容 RFC 2047 编码主题。"""
@@ -288,7 +293,7 @@ class TempMailService(BaseEmailService):
             email_id: 未使用，保留接口兼容
             timeout: 超时时间（秒）
             pattern: 验证码正则
-            otp_sent_at: OTP 发送时间戳（暂未使用）
+            otp_sent_at: OTP 发送时间戳，用于过滤旧邮件
 
         Returns:
             验证码字符串，超时返回 None
@@ -296,27 +301,106 @@ class TempMailService(BaseEmailService):
         logger.info(f"正在从 TempMail 邮箱 {email} 获取验证码...")
 
         start_time = time.time()
-        seen_mail_ids: set = set()
+        seen_mail_ids: set = set()  # 已确认无需再次处理的邮件
+        mail_attempts: Dict[str, int] = {}  # 允许同一封邮件重复解析（内容可能延迟填充）
+        max_attempts_per_mail = 3
 
         # 优先使用用户级 JWT，回退到 admin API
         cached = self._email_cache.get(email, {})
         jwt = cached.get("jwt")
 
+        normalized_email = str(email or "").strip().lower()
+        used_codes = self._used_codes.setdefault(normalized_email, set())
+
+        def parse_created_at(value: Any, reference_ts: Optional[float] = None) -> Optional[float]:
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                try:
+                    return float(value)
+                except Exception:
+                    return None
+            text = str(value).strip()
+            if not text:
+                return None
+            # 支持纯数字时间戳（秒 / 毫秒）
+            if text.isdigit():
+                try:
+                    num = float(text)
+                    if num > 10_000_000_000:  # 13 位毫秒级
+                        num = num / 1000.0
+                    return num
+                except Exception:
+                    return None
+            try:
+                normalized = text.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(normalized)
+
+                # 1) 有时区：直接转 UTC
+                if dt.tzinfo is not None:
+                    return dt.astimezone(timezone.utc).timestamp()
+
+                # 2) 无时区：同时按 UTC / 本地时区解释，选择更接近 reference_ts 的那个
+                local_tz = datetime.now().astimezone().tzinfo or timezone.utc
+                candidates = [
+                    dt.replace(tzinfo=timezone.utc).timestamp(),
+                    dt.replace(tzinfo=local_tz).timestamp(),
+                ]
+                if reference_ts:
+                    return min(candidates, key=lambda ts: abs(ts - reference_ts))
+                return candidates[1]
+            except Exception:
+                pass
+
+            # 兼容无时区字符串（例如 UI 中看到的 "2026/3/24 14:52:18"）
+            for fmt in ("%Y/%m/%d %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M", "%Y-%m-%d %H:%M"):
+                try:
+                    dt = datetime.strptime(text, fmt)
+                    local_tz = datetime.now().astimezone().tzinfo or timezone.utc
+                    candidates = [
+                        dt.replace(tzinfo=timezone.utc).timestamp(),
+                        dt.replace(tzinfo=local_tz).timestamp(),
+                    ]
+                    if reference_ts:
+                        return min(candidates, key=lambda ts: abs(ts - reference_ts))
+                    return candidates[1]
+                except Exception:
+                    continue
+
+            return None
+
+        min_timestamp = (otp_sent_at - 60) if otp_sent_at else 0
+        if otp_sent_at:
+            try:
+                otp_human = datetime.fromtimestamp(otp_sent_at, tz=timezone.utc).isoformat()
+            except Exception:
+                otp_human = str(otp_sent_at)
+            # 诊断日志（默认不输出；需要时将日志级别调到 DEBUG）
+            logger.debug(
+                f"[{email}] 本次 OTP 发送时间戳: {otp_sent_at:.3f} ({otp_human})，将跳过早于 {min_timestamp:.3f} 的旧邮件"
+            )
+
         while time.time() - start_time < timeout:
             try:
-                if jwt:
-                    response = self._make_request(
-                        "GET",
-                        "/user_api/mails",
-                        params={"limit": 20, "offset": 0},
-                        headers={"x-user-token": jwt, "Content-Type": "application/json", "Accept": "application/json"},
-                    )
-                else:
-                    response = self._make_request(
-                        "GET",
-                        "/admin/mails",
-                        params={"limit": 20, "offset": 0, "address": email},
-                    )
+                # if jwt:
+                #     response = self._make_request(
+                #         "GET",
+                #         "/user_api/mails",
+                #         params={"limit": 20, "offset": 0},
+                #         headers={"x-user-token": jwt, "Content-Type": "application/json", "Accept": "application/json"},
+                #     )
+                # else:
+                #     response = self._make_request(
+                #         "GET",
+                #         "/admin/mails",
+                #         params={"limit": 20, "offset": 0, "address": email},
+                #     )
+                # 走 user 通道无法获取邮件,如果通过 try catch 走 admin 通道,会因为之前走过 user 通道,导致失效的问题
+                response = self._make_request(
+                    "GET",
+                    "/admin/mails",
+                    params={"limit": 20, "offset": 0, "address": email},
+                )
 
                 # /user_api/mails 和 /admin/mails 返回格式相同: {"results": [...], "total": N}
                 mails = response.get("results", [])
@@ -324,12 +408,69 @@ class TempMailService(BaseEmailService):
                     time.sleep(3)
                     continue
 
+                # 旧实现（保留注释便于参考）：按 API 原顺序扫描，命中后直接返回，可能取到旧邮件验证码
+                # for mail in mails:
+                #     ...
+
+                # 优先扫描“更近的邮件”，避免 API 返回顺序不稳定导致先命中旧验证码
+                # 没有 createdAt 的邮件放到最后，减少误判风险（并且只解析 createdAt 一次）
+                mail_items: List[Dict[str, Any]] = []
                 for mail in mails:
-                    mail_id = mail.get("id")
-                    if not mail_id or mail_id in seen_mail_ids:
+                    created_at_raw = mail.get("createdAt") or mail.get("created_at")
+                    created_ts = parse_created_at(created_at_raw, otp_sent_at)
+                    mail_items.append(
+                        {
+                            "mail": mail,
+                            "id": mail.get("id"),
+                            "created_at_raw": created_at_raw,
+                            "created_ts": created_ts,
+                        }
+                    )
+
+                mail_items.sort(
+                    key=lambda item: (1 if item["created_ts"] is not None else 0, item["created_ts"] or 0),
+                    reverse=True,
+                )
+
+                # 诊断日志：每轮轮询打印前几封邮件的解析结果（默认不输出；需要时将日志级别调到 DEBUG）
+                logger.debug(f"[{email}] 拉取到 {len(mail_items)} 封邮件，min_timestamp={min_timestamp:.3f}")
+                for idx, item in enumerate(mail_items[:3]):
+                    mid = item.get("id")
+                    cat_raw = item.get("created_at_raw")
+                    cat_ts = item.get("created_ts")
+                    delta = (cat_ts - otp_sent_at) if (cat_ts is not None and otp_sent_at) else None
+                    m = item.get("mail") or {}
+                    subj = (m.get("subject") or m.get("title") or "")
+                    src = (m.get("source") or m.get("from") or m.get("from_address") or m.get("fromAddress") or "")
+                    logger.debug(
+                        f"[{email}] 预览[{idx}] id={mid}, createdAt={cat_raw!r}, ts={cat_ts}, Δ={delta}, from={str(src)[:60]!r}, subject={str(subj)[:80]!r}"
+                    )
+
+                for item in mail_items:
+                    mail = item["mail"]
+                    mail_id = item["id"]
+
+                    # 旧实现（保留注释便于参考）：seen 后不再解析
+                    # if not mail_id or mail_id in seen_mail_ids:
+                    #     continue
+
+                    if not mail_id:
+                        logger.debug(f"[{email}] 跳过无 id 邮件: subject={(mail.get('subject') or '')[:60]!r}")
+                        continue
+                    if mail_id in seen_mail_ids:
                         continue
 
-                    seen_mail_ids.add(mail_id)
+                    created_at_raw = item.get("created_at_raw")
+                    created_timestamp = item.get("created_ts")
+                    if min_timestamp and created_timestamp is not None and created_timestamp < min_timestamp:
+                        seen_mail_ids.add(mail_id)
+                        logger.debug(
+                            f"[{email}] 跳过旧邮件 id={mail_id}, createdAt={created_at_raw}, subject={(mail.get('subject') or '')[:60]!r}"
+                        )
+                        continue
+
+                    # 旧实现（保留注释便于参考）：进入解析前就标记为 seen，可能导致“内容未完整时错过验证码”
+                    # seen_mail_ids.add(mail_id)
 
                     parsed = self._extract_mail_fields(mail)
                     sender = parsed["sender"].lower()
@@ -338,19 +479,78 @@ class TempMailService(BaseEmailService):
                     raw_text = parsed["raw"]
                     content = f"{sender}\n{subject}\n{body_text}\n{raw_text}".strip()
 
-                    # 只处理 OpenAI 邮件
-                    if "openai" not in sender and "openai" not in content.lower():
+                    # 邮件内容可能延迟填充：对“内容不足”的邮件不要立刻拉黑，允许后续轮询再次解析
+                    attempt_count = mail_attempts.get(mail_id, 0) + 1
+                    mail_attempts[mail_id] = attempt_count
+                    if len(content) < 40 and attempt_count <= max_attempts_per_mail:
+                        logger.debug(
+                            f"[{email}] 邮件内容过短，稍后重试 id={mail_id}, attempt={attempt_count}/{max_attempts_per_mail}, createdAt={created_at_raw!r}, subject={subject[:80]!r}"
+                        )
+                        continue
+
+                    content_lower = content.lower()
+
+                    # 只处理 OpenAI / ChatGPT 验证相关邮件
+                    # 说明：部分邮件正文/主题可能不包含 "openai" 字样（例如 "The ChatGPT team"），但仍是 OpenAI 的 OTP 邮件
+                    is_target = (
+                        ("openai" in sender)
+                        or ("openai" in content_lower)
+                        or (
+                            "chatgpt" in content_lower
+                            and any(
+                                kw in content_lower
+                                for kw in (
+                                    "verification code",
+                                    "temporary verification code",
+                                    "log-in code",
+                                    "one-time password",
+                                    "otp",
+                                )
+                            )
+                        )
+                    )
+
+                    if not is_target:
+                        # raw 可能稍后才填充（From/Headers 会补齐），先重试几轮再判定为非目标邮件
+                        if not raw_text and attempt_count <= max_attempts_per_mail:
+                            logger.debug(
+                                f"[{email}] 非目标邮件(可能未完整)，稍后重试 id={mail_id}, attempt={attempt_count}/{max_attempts_per_mail}, createdAt={created_at_raw!r}, subject={subject[:80]!r}"
+                            )
+                            continue
+
+                        seen_mail_ids.add(mail_id)
+                        logger.debug(
+                            f"[{email}] 跳过非目标邮件 id={mail_id}, createdAt={created_at_raw!r}, subject={subject[:80]!r}"
+                        )
                         continue
 
                     match = re.search(pattern, content)
                     if match:
                         code = match.group(1)
-                        logger.info(f"从 TempMail 邮箱 {email} 找到验证码: {code}")
+                        if code in used_codes:
+                            # 已用过的 code 直接跳过，继续等待新邮件/新验证码
+                            seen_mail_ids.add(mail_id)
+                            logger.debug(
+                                f"[{email}] 跳过已使用验证码: {code} (mail_id={mail_id}, createdAt={created_at_raw!r}, subject={subject[:80]!r})"
+                            )
+                            continue
+
+                        used_codes.add(code)
+                        logger.info(
+                            f"[{email}] 从 TempMail 找到验证码: {code} (mail_id={mail_id}, createdAt={created_at_raw}, subject={subject[:80]!r})"
+                        )
                         self.update_status(True)
                         return code
 
+                    # 没匹配到验证码：若内容已较充分或已重试多次，则标记为已处理，避免无效重复解析
+                    if len(content) >= 200 or attempt_count >= max_attempts_per_mail:
+                        seen_mail_ids.add(mail_id)
+                        logger.debug(
+                            f"[{email}] 未匹配到验证码，标记为已处理 id={mail_id}, attempt={attempt_count}, createdAt={created_at_raw!r}, subject={subject[:80]!r}"
+                        )
+
             except Exception as e:
-                logger.debug(f"检查 TempMail 邮件时出错: {e}")
+                logger.warning(f"检查 TempMail 邮件时出错: {e}")
 
             time.sleep(3)
 
