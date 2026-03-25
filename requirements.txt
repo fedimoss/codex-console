@@ -11,5 +11,4 @@ python-multipart>=0.0.6
 sqlalchemy>=2.0.0
 aiosqlite>=0.19.0
 psycopg[binary]>=3.1.18
-# Optional: playwright for opening payment pages in incognito mode
-# playwright>=1.40.0
+playwright>=1.40.0
