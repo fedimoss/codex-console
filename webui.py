@@ -4,6 +4,7 @@ Web UI 启动入口
 
 import uvicorn
 import logging
+import socket
 import sys
 from pathlib import Path
 
@@ -24,6 +25,13 @@ from src.core.timezone_utils import apply_process_timezone
 from src.core.db_logs import install_database_log_handler
 from src.database.init_db import initialize_database
 from src.config.settings import get_settings
+from src.config.project_notice import build_terminal_notice_lines
+
+
+def _print_project_notice():
+    """Print the project notice to the terminal on startup."""
+    for line in build_terminal_notice_lines():
+        print(line)
 
 
 def _load_dotenv():
@@ -89,6 +97,7 @@ def setup_application():
 
 
 def start_webui():
+    _print_project_notice()
     """启动 Web UI"""
     # 设置应用程序
     settings = setup_application()
@@ -163,4 +172,9 @@ def main():
 
 
 if __name__ == "__main__":
+    # PyInstaller 打包后 Windows 上 uvicorn 可能拉起多进程，
+    # 这里先做 freeze_support，避免 multiprocessing-fork 参数报错。
+    import multiprocessing
+
+    multiprocessing.freeze_support()
     main()
