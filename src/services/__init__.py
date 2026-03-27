@@ -13,6 +13,7 @@ from .base import (
 from .tempmail import TempmailService
 from .outlook import OutlookService
 from .moe_mail import MeoMailEmailService
+from .gpt_mail import GPTMailService
 from .temp_mail import TempMailService
 from .duck_mail import DuckMailService
 from .freemail import FreemailService
@@ -22,6 +23,7 @@ from .imap_mail import ImapMailService
 EmailServiceFactory.register(EmailServiceType.TEMPMAIL, TempmailService)
 EmailServiceFactory.register(EmailServiceType.OUTLOOK, OutlookService)
 EmailServiceFactory.register(EmailServiceType.MOE_MAIL, MeoMailEmailService)
+EmailServiceFactory.register(EmailServiceType.GPT_MAIL, GPTMailService)
 EmailServiceFactory.register(EmailServiceType.TEMP_MAIL, TempMailService)
 EmailServiceFactory.register(EmailServiceType.DUCK_MAIL, DuckMailService)
 EmailServiceFactory.register(EmailServiceType.FREEMAIL, FreemailService)
@@ -55,6 +57,7 @@ __all__ = [
     'TempmailService',
     'OutlookService',
     'MeoMailEmailService',
+    'GPTMailService',
     'TempMailService',
     'DuckMailService',
     'FreemailService',

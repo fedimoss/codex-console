@@ -34,6 +34,7 @@ class EmailServiceType(str, Enum):
     TEMPMAIL = "tempmail"
     OUTLOOK = "outlook"
     MOE_MAIL = "moe_mail"
+    GPT_MAIL = "gpt_mail"
     TEMP_MAIL = "temp_mail"
     DUCK_MAIL = "duck_mail"
     FREEMAIL = "freemail"
@@ -115,6 +116,13 @@ EMAIL_SERVICE_DEFAULTS = {
     "moe_mail": {
         "base_url": "",  # 需要用户配置
         "api_key_header": "X-API-Key",
+        "timeout": 30,
+        "max_retries": 3,
+    },
+    "gpt_mail": {
+        "base_url": "",
+        "api_key": "",
+        "domain": "",
         "timeout": 30,
         "max_retries": 3,
     },

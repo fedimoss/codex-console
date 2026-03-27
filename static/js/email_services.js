@@ -49,6 +49,7 @@ const elements = {
     cancelAddCustom: document.getElementById('cancel-add-custom'),
     customSubType: document.getElementById('custom-sub-type'),
     addMoemailFields: document.getElementById('add-moemail-fields'),
+    addGptmailFields: document.getElementById('add-gptmail-fields'),
     addTempmailFields: document.getElementById('add-tempmail-fields'),
     addDuckmailFields: document.getElementById('add-duckmail-fields'),
     addFreemailFields: document.getElementById('add-freemail-fields'),
@@ -60,6 +61,7 @@ const elements = {
     closeEditCustomModal: document.getElementById('close-edit-custom-modal'),
     cancelEditCustom: document.getElementById('cancel-edit-custom'),
     editMoemailFields: document.getElementById('edit-moemail-fields'),
+    editGptmailFields: document.getElementById('edit-gptmail-fields'),
     editTempmailFields: document.getElementById('edit-tempmail-fields'),
     editDuckmailFields: document.getElementById('edit-duckmail-fields'),
     editFreemailFields: document.getElementById('edit-freemail-fields'),
@@ -75,6 +77,7 @@ const elements = {
 };
 
 const CUSTOM_SUBTYPE_LABELS = {
+    gptmail: 'GPTMail',
     moemail: '🔗 MoeMail（自定义域名 API）',
     tempmail: '📮 TempMail（自部署 Cloudflare Worker）',
     duckmail: '🦆 DuckMail（DuckMail API）',
@@ -182,6 +185,7 @@ function closeEmailMoreMenu(el) {
 function switchAddSubType(subType) {
     elements.customSubType.value = subType;
     elements.addMoemailFields.style.display = subType === 'moemail' ? '' : 'none';
+    elements.addGptmailFields.style.display = subType === 'gptmail' ? '' : 'none';
     elements.addTempmailFields.style.display = subType === 'tempmail' ? '' : 'none';
     elements.addDuckmailFields.style.display = subType === 'duckmail' ? '' : 'none';
     elements.addFreemailFields.style.display = subType === 'freemail' ? '' : 'none';
@@ -192,6 +196,7 @@ function switchAddSubType(subType) {
 function switchEditSubType(subType) {
     elements.editCustomSubTypeHidden.value = subType;
     elements.editMoemailFields.style.display = subType === 'moemail' ? '' : 'none';
+    elements.editGptmailFields.style.display = subType === 'gptmail' ? '' : 'none';
     elements.editTempmailFields.style.display = subType === 'tempmail' ? '' : 'none';
     elements.editDuckmailFields.style.display = subType === 'duckmail' ? '' : 'none';
     elements.editFreemailFields.style.display = subType === 'freemail' ? '' : 'none';
@@ -204,7 +209,7 @@ async function loadStats() {
     try {
         const data = await api.get('/email-services/stats');
         elements.outlookCount.textContent = data.outlook_count || 0;
-        elements.customCount.textContent = (data.custom_count || 0) + (data.temp_mail_count || 0) + (data.duck_mail_count || 0) + (data.freemail_count || 0) + (data.imap_mail_count || 0);
+        elements.customCount.textContent = (data.custom_count || 0) + (data.gpt_mail_count || 0) + (data.temp_mail_count || 0) + (data.duck_mail_count || 0) + (data.freemail_count || 0) + (data.imap_mail_count || 0);
         elements.tempmailStatus.textContent = data.tempmail_available ? '可用' : '不可用';
         elements.totalEnabled.textContent = data.enabled_count || 0;
     } catch (error) {
@@ -280,6 +285,9 @@ function getCustomServiceTypeBadge(subType) {
     if (subType === 'moemail') {
         return '<span class="status-badge info">MoeMail</span>';
     }
+    if (subType === 'gptmail') {
+        return '<span class="status-badge" style="background-color:#0f766e;color:white;">GPTMail</span>';
+    }
     if (subType === 'tempmail') {
         return '<span class="status-badge warning">TempMail</span>';
     }
@@ -300,6 +308,12 @@ function getCustomServiceAddress(service) {
     }
     const baseUrl = service.config?.base_url || '-';
     const domain = service.config?.default_domain || service.config?.domain;
+    if (service._subType === 'gptmail' && !domain) {
+        return `${escapeHtml(baseUrl)}<div style="color: var(--text-muted); margin-top: 4px;">留空域名时随机生成邮箱</div>`;
+    }
+    if (service._subType === 'gptmail' && domain) {
+        return `${escapeHtml(baseUrl)}<div style="color: var(--text-muted); margin-top: 4px;">指定域名：@${escapeHtml(domain)}</div>`;
+    }
     if (!domain) {
         return escapeHtml(baseUrl);
     }
@@ -309,8 +323,9 @@ function getCustomServiceAddress(service) {
 // 加载自定义邮箱服务（moe_mail + temp_mail + duck_mail + freemail 合并）
 async function loadCustomServices() {
     try {
-        const [r1, r2, r3, r4, r5] = await Promise.all([
+        const [r1, r2, r3, r4, r5, r6] = await Promise.all([
             api.get('/email-services?service_type=moe_mail'),
+            api.get('/email-services?service_type=gpt_mail'),
             api.get('/email-services?service_type=temp_mail'),
             api.get('/email-services?service_type=duck_mail'),
             api.get('/email-services?service_type=freemail'),
@@ -318,10 +333,11 @@ async function loadCustomServices() {
         ]);
         customServices = [
             ...(r1.services || []).map(s => ({ ...s, _subType: 'moemail' })),
-            ...(r2.services || []).map(s => ({ ...s, _subType: 'tempmail' })),
-            ...(r3.services || []).map(s => ({ ...s, _subType: 'duckmail' })),
-            ...(r4.services || []).map(s => ({ ...s, _subType: 'freemail' })),
-            ...(r5.services || []).map(s => ({ ...s, _subType: 'imap' }))
+            ...(r2.services || []).map(s => ({ ...s, _subType: 'gptmail' })),
+            ...(r3.services || []).map(s => ({ ...s, _subType: 'tempmail' })),
+            ...(r4.services || []).map(s => ({ ...s, _subType: 'duckmail' })),
+            ...(r5.services || []).map(s => ({ ...s, _subType: 'freemail' })),
+            ...(r6.services || []).map(s => ({ ...s, _subType: 'imap' }))
         ];
 
         if (customServices.length === 0) {
@@ -442,6 +458,13 @@ async function handleAddCustom(e) {
             base_url: formData.get('api_url'),
             api_key: formData.get('api_key'),
             default_domain: formData.get('domain')
+        };
+    } else if (subType === 'gptmail') {
+        serviceType = 'gpt_mail';
+        config = {
+            base_url: formData.get('gm_base_url'),
+            api_key: formData.get('gm_api_key'),
+            domain: formData.get('gm_domain')
         };
     } else if (subType === 'tempmail') {
         serviceType = 'temp_mail';
@@ -611,15 +634,17 @@ async function editCustomService(id, subType) {
     try {
         const service = await api.get(`/email-services/${id}/full`);
         const resolvedSubType = subType || (
-            service.service_type === 'temp_mail'
-                ? 'tempmail'
-                : service.service_type === 'duck_mail'
-                    ? 'duckmail'
-                    : service.service_type === 'freemail'
-                        ? 'freemail'
-                        : service.service_type === 'imap_mail'
-                            ? 'imap'
-                            : 'moemail'
+            service.service_type === 'gpt_mail'
+                ? 'gptmail'
+                : service.service_type === 'temp_mail'
+                    ? 'tempmail'
+                    : service.service_type === 'duck_mail'
+                        ? 'duckmail'
+                        : service.service_type === 'freemail'
+                            ? 'freemail'
+                            : service.service_type === 'imap_mail'
+                                ? 'imap'
+                                : 'moemail'
         );
 
         document.getElementById('edit-custom-id').value = service.id;
@@ -634,6 +659,11 @@ async function editCustomService(id, subType) {
             document.getElementById('edit-custom-api-key').value = '';
             document.getElementById('edit-custom-api-key').placeholder = service.config?.api_key ? '已设置，留空保持不变' : 'API Key';
             document.getElementById('edit-custom-domain').value = service.config?.default_domain || service.config?.domain || '';
+        } else if (resolvedSubType === 'gptmail') {
+            document.getElementById('edit-gm-base-url').value = service.config?.base_url || '';
+            document.getElementById('edit-gm-api-key').value = '';
+            document.getElementById('edit-gm-api-key').placeholder = service.config?.api_key ? 'Keep existing if left blank' : 'API Key';
+            document.getElementById('edit-gm-domain').value = service.config?.domain || '';
         } else if (resolvedSubType === 'tempmail') {
             document.getElementById('edit-tm-base-url').value = service.config?.base_url || '';
             document.getElementById('edit-tm-admin-password').value = '';
@@ -656,7 +686,7 @@ async function editCustomService(id, subType) {
             document.getElementById('edit-imap-use-ssl').value = service.config?.use_ssl !== false ? 'true' : 'false';
             document.getElementById('edit-imap-email').value = service.config?.email || '';
             document.getElementById('edit-imap-password').value = '';
-            document.getElementById('edit-imap-password').placeholder = service.config?.password ? '已设置，留空保持不变' : '请输入密码/授权码';
+            document.getElementById('edit-imap-password').placeholder = service.config?.password ? '已设置，留空保持不变' : '请输入密码或授权码';
         }
 
         elements.editCustomModal.classList.add('active');
@@ -665,7 +695,7 @@ async function editCustomService(id, subType) {
     }
 }
 
-// 保存编辑自定义邮箱服务
+// Save custom email service edits
 async function handleEditCustom(e) {
     e.preventDefault();
     const id = document.getElementById('edit-custom-id').value;
@@ -679,6 +709,13 @@ async function handleEditCustom(e) {
             default_domain: formData.get('domain')
         };
         const apiKey = formData.get('api_key');
+        if (apiKey && apiKey.trim()) config.api_key = apiKey.trim();
+    } else if (subType === 'gptmail') {
+        config = {
+            base_url: formData.get('gm_base_url'),
+            domain: formData.get('gm_domain')
+        };
+        const apiKey = formData.get('gm_api_key');
         if (apiKey && apiKey.trim()) config.api_key = apiKey.trim();
     } else if (subType === 'tempmail') {
         config = {

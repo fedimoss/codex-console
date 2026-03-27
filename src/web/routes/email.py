@@ -151,6 +151,7 @@ async def get_email_services_stats():
         stats = {
             'outlook_count': 0,
             'custom_count': 0,
+            'gpt_mail_count': 0,
             'temp_mail_count': 0,
             'duck_mail_count': 0,
             'freemail_count': 0,
@@ -164,6 +165,8 @@ async def get_email_services_stats():
                 stats['outlook_count'] = count
             elif service_type == 'moe_mail':
                 stats['custom_count'] = count
+            elif service_type == 'gpt_mail':
+                stats['gpt_mail_count'] = count
             elif service_type == 'temp_mail':
                 stats['temp_mail_count'] = count
             elif service_type == 'duck_mail':
@@ -221,6 +224,16 @@ async def get_service_types():
                     {"name": "custom_auth", "label": "Custom Auth（可选）", "required": False, "secret": True},
                     {"name": "domain", "label": "邮箱域名", "required": True, "placeholder": "example.com"},
                     {"name": "enable_prefix", "label": "启用前缀", "required": False, "default": True},
+                ]
+            },
+            {
+                "value": "gpt_mail",
+                "label": "GPTMail",
+                "description": "随机邮箱 API 服务，仅需 API 地址和 API Key",
+                "config_fields": [
+                    {"name": "base_url", "label": "API 地址", "required": True, "placeholder": "https://mail.chatgpt.org.uk"},
+                    {"name": "api_key", "label": "API Key", "required": True, "secret": True},
+                    {"name": "domain", "label": "邮箱域名（可选）", "required": False, "placeholder": "example.com"},
                 ]
             },
             {

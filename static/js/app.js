@@ -24,6 +24,7 @@ let availableServices = {
     tempmail: { available: true, services: [] },
     outlook: { available: false, services: [] },
     moe_mail: { available: false, services: [] },
+    gpt_mail: { available: false, services: [] },
     temp_mail: { available: false, services: [] },
     duck_mail: { available: false, services: [] },
     freemail: { available: false, services: [] }
@@ -350,6 +351,23 @@ function updateEmailServiceOptions() {
         select.appendChild(optgroup);
     }
 
+    // GPTMail
+    if (availableServices.gpt_mail && availableServices.gpt_mail.available) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = `GPTMail (${availableServices.gpt_mail.count} 个服务)`;
+
+        availableServices.gpt_mail.services.forEach(service => {
+            const option = document.createElement('option');
+            option.value = `gpt_mail:${service.id}`;
+            option.textContent = service.name + (service.domain ? ` (@${service.domain})` : '');
+            option.dataset.type = 'gpt_mail';
+            option.dataset.serviceId = service.id;
+            optgroup.appendChild(option);
+        });
+
+        select.appendChild(optgroup);
+    }
+
     // DuckMail
     if (availableServices.duck_mail && availableServices.duck_mail.available) {
         const optgroup = document.createElement('optgroup');
@@ -422,6 +440,11 @@ function handleServiceChange(e) {
         const service = availableServices.temp_mail.services.find(s => s.id == id);
         if (service) {
             addLog('info', `[系统] 已选择 Temp-Mail 自部署服务: ${service.name}`);
+        }
+    } else if (type === 'gpt_mail') {
+        const service = availableServices.gpt_mail.services.find(s => s.id == id);
+        if (service) {
+            addLog('info', `[系统] 已选择 GPTMail 服务: ${service.name}`);
         }
     } else if (type === 'duck_mail') {
         const service = availableServices.duck_mail.services.find(s => s.id == id);
