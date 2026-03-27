@@ -4,7 +4,7 @@
 
 from contextlib import contextmanager
 from typing import Generator
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 import os
@@ -92,31 +92,93 @@ class DatabaseSessionManager:
         """删除所有表（谨慎使用）"""
         Base.metadata.drop_all(bind=self.engine)
 
+    def _get_migration_column_type(self, migration: dict) -> str:
+        """根据当前数据库方言获取列定义。"""
+        column_types = migration["types"]
+        return column_types.get(self.engine.dialect.name, column_types["default"])
+
+    def _table_exists(self, conn, table_name: str) -> bool:
+        """检查表是否存在。"""
+        return inspect(conn).has_table(table_name)
+
+    def _column_exists(self, conn, table_name: str, column_name: str) -> bool:
+        """检查列是否存在。"""
+        if not self._table_exists(conn, table_name):
+            return False
+        return any(column["name"] == column_name for column in inspect(conn).get_columns(table_name))
+
     def migrate_tables(self):
         """
         数据库迁移 - 添加缺失的列
         用于在不删除数据的情况下更新表结构
         """
-        if not self.database_url.startswith("sqlite"):
-            logger.info("非 SQLite 数据库，跳过自动迁移")
-            return
-
         # 需要检查和添加的新列
         migrations = [
-            # (表名, 列名, 列类型)
-            ("accounts", "cpa_uploaded", "BOOLEAN DEFAULT 0"),
-            ("accounts", "cpa_uploaded_at", "DATETIME"),
-            ("accounts", "source", "VARCHAR(20) DEFAULT 'register'"),
-            ("accounts", "subscription_type", "VARCHAR(20)"),
-            ("accounts", "subscription_at", "DATETIME"),
-            ("accounts", "cookies", "TEXT"),
-            ("cpa_services", "proxy_url", "VARCHAR(1000)"),
-            ("sub2api_services", "target_type", "VARCHAR(50) DEFAULT 'sub2api'"),
-            ("proxies", "is_default", "BOOLEAN DEFAULT 0"),
-            ("bind_card_tasks", "checkout_session_id", "VARCHAR(120)"),
-            ("bind_card_tasks", "publishable_key", "VARCHAR(255)"),
-            ("bind_card_tasks", "client_secret", "TEXT"),
-            ("bind_card_tasks", "bind_mode", "VARCHAR(30) DEFAULT 'semi_auto'"),
+            {
+                "table": "accounts",
+                "column": "cpa_uploaded",
+                "types": {"default": "BOOLEAN DEFAULT FALSE"},
+            },
+            {
+                "table": "accounts",
+                "column": "cpa_uploaded_at",
+                "types": {"default": "TIMESTAMP"},
+            },
+            {
+                "table": "accounts",
+                "column": "source",
+                "types": {"default": "VARCHAR(20) DEFAULT 'register'"},
+            },
+            {
+                "table": "accounts",
+                "column": "subscription_type",
+                "types": {"default": "VARCHAR(20)"},
+            },
+            {
+                "table": "accounts",
+                "column": "subscription_at",
+                "types": {"default": "TIMESTAMP"},
+            },
+            {
+                "table": "accounts",
+                "column": "cookies",
+                "types": {"default": "TEXT"},
+            },
+            {
+                "table": "cpa_services",
+                "column": "proxy_url",
+                "types": {"default": "VARCHAR(1000)"},
+            },
+            {
+                "table": "sub2api_services",
+                "column": "target_type",
+                "types": {"default": "VARCHAR(50) DEFAULT 'sub2api'"},
+            },
+            {
+                "table": "proxies",
+                "column": "is_default",
+                "types": {"default": "BOOLEAN DEFAULT FALSE"},
+            },
+            {
+                "table": "bind_card_tasks",
+                "column": "checkout_session_id",
+                "types": {"default": "VARCHAR(120)"},
+            },
+            {
+                "table": "bind_card_tasks",
+                "column": "publishable_key",
+                "types": {"default": "VARCHAR(255)"},
+            },
+            {
+                "table": "bind_card_tasks",
+                "column": "client_secret",
+                "types": {"default": "TEXT"},
+            },
+            {
+                "table": "bind_card_tasks",
+                "column": "bind_mode",
+                "types": {"default": "VARCHAR(30) DEFAULT 'semi_auto'"},
+            },
         ]
 
         # 确保新表存在（create_tables 已处理，此处兜底）
@@ -131,20 +193,24 @@ class DatabaseSessionManager:
             except Exception as e:
                 logger.warning(f"迁移 custom_domain -> moe_mail 时出错: {e}")
 
-            for table_name, column_name, column_type in migrations:
+            for migration in migrations:
+                table_name = migration["table"]
+                column_name = migration["column"]
                 try:
-                    # 检查列是否存在
-                    result = conn.execute(text(
-                        f"SELECT * FROM pragma_table_info('{table_name}') WHERE name='{column_name}'"
+                    if not self._table_exists(conn, table_name):
+                        logger.info(f"表 {table_name} 不存在，跳过列迁移 {column_name}")
+                        continue
+
+                    if self._column_exists(conn, table_name, column_name):
+                        continue
+
+                    column_type = self._get_migration_column_type(migration)
+                    logger.info(f"添加列 {table_name}.{column_name}")
+                    conn.execute(text(
+                        f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
                     ))
-                    if result.fetchone() is None:
-                        # 列不存在，添加它
-                        logger.info(f"添加列 {table_name}.{column_name}")
-                        conn.execute(text(
-                            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
-                        ))
-                        conn.commit()
-                        logger.info(f"成功添加列 {table_name}.{column_name}")
+                    conn.commit()
+                    logger.info(f"成功添加列 {table_name}.{column_name}")
                 except Exception as e:
                     logger.warning(f"迁移列 {table_name}.{column_name} 时出错: {e}")
 
