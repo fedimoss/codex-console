@@ -39,13 +39,13 @@ class EmailServiceUpdate(BaseModel):
 
 
 class EmailServiceResponse(BaseModel):
-    """??????"""
+    """邮箱服务响应"""
     id: int
     service_type: str
     name: str
     enabled: bool
     priority: int
-    config: Optional[Dict[str, Any]] = None  # ??????????
+    config: Optional[Dict[str, Any]] = None  # 过滤敏感信息后的配置
     registration_status: Optional[str] = None
     registered_account_id: Optional[int] = None
     last_used: Optional[str] = None
@@ -118,8 +118,19 @@ def filter_sensitive_config(config: Dict[str, Any]) -> Dict[str, Any]:
     return filtered
 
 
+def _normalize_outlook_email_config(service_type: str, config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """统一 Outlook 配置中的邮箱大小写，避免和账号库比较不一致。"""
+    normalized = dict(config or {})
+    if str(service_type or "").strip().lower() != "outlook":
+        return normalized
+
+    if "email" in normalized:
+        normalized["email"] = str(normalized.get("email") or "").strip().lower()
+    return normalized
+
+
 def service_to_response(service: EmailServiceModel) -> EmailServiceResponse:
-    """?????????"""
+    """转换服务模型为响应"""
     registration_status = None
     registered_account_id = None
     if service.service_type == "outlook":
@@ -254,6 +265,18 @@ async def get_service_types():
                 ]
             },
             {
+                "value": "cloudmail",
+                "label": "CloudMail（自部署）",
+                "description": "CloudMail 自部署邮箱服务（配置与 Temp-Mail 兼容）",
+                "config_fields": [
+                    {"name": "base_url", "label": "Worker 地址", "required": True, "placeholder": "https://mail.example.com"},
+                    {"name": "admin_password", "label": "Admin 密码", "required": True, "secret": True},
+                    {"name": "custom_auth", "label": "Custom Auth（可选）", "required": False, "secret": True},
+                    {"name": "domain", "label": "邮箱域名", "required": True, "placeholder": "example.com"},
+                    {"name": "enable_prefix", "label": "启用前缀", "required": False, "default": True},
+                ]
+            },
+            {
                 "value": "gpt_mail",
                 "label": "GPTMail",
                 "description": "随机邮箱 API 服务，仅需 API 地址和 API Key",
@@ -363,16 +386,31 @@ async def create_email_service(request: EmailServiceCreate):
     except ValueError:
         raise HTTPException(status_code=400, detail=f"无效的服务类型: {request.service_type}")
 
+    normalized_service_type = str(request.service_type or "").strip().lower()
+    normalized_config = _normalize_outlook_email_config(normalized_service_type, request.config)
+    normalized_name = str(request.name or "").strip()
+    if normalized_service_type == "outlook":
+        normalized_email = str(normalized_config.get("email") or normalized_name).strip().lower()
+        if normalized_email:
+            normalized_name = normalized_email
+            normalized_config["email"] = normalized_email
+
     with get_db() as db:
         # 检查名称是否重复
-        existing = db.query(EmailServiceModel).filter(EmailServiceModel.name == request.name).first()
+        if normalized_service_type == "outlook":
+            existing = db.query(EmailServiceModel).filter(
+                EmailServiceModel.service_type == "outlook",
+                func.lower(EmailServiceModel.name) == normalized_name
+            ).first()
+        else:
+            existing = db.query(EmailServiceModel).filter(EmailServiceModel.name == normalized_name).first()
         if existing:
             raise HTTPException(status_code=400, detail="服务名称已存在")
 
         service = EmailServiceModel(
-            service_type=request.service_type,
-            name=request.name,
-            config=request.config,
+            service_type=normalized_service_type,
+            name=normalized_name,
+            config=normalized_config,
             enabled=request.enabled,
             priority=request.priority
         )
@@ -400,6 +438,14 @@ async def update_email_service(service_id: int, request: EmailServiceUpdate):
             merged_config = {**current_config, **request.config}
             # 移除空值
             merged_config = {k: v for k, v in merged_config.items() if v}
+            merged_config = _normalize_outlook_email_config(service.service_type, merged_config)
+            if (
+                str(service.service_type or "").strip().lower() == "outlook"
+                and request.name is None
+            ):
+                normalized_email = str(merged_config.get("email") or "").strip().lower()
+                if normalized_email:
+                    update_data["name"] = normalized_email
             update_data["config"] = merged_config
         if request.enabled is not None:
             update_data["enabled"] = request.enabled
@@ -539,7 +585,7 @@ async def batch_import_outlook(request: OutlookBatchImportRequest):
                 errors.append(f"行 {i+1}: 格式错误，至少需要邮箱和密码")
                 continue
 
-            email = parts[0].strip()
+            email = parts[0].strip().lower()
             password = parts[1].strip()
 
             # 验证邮箱格式
@@ -551,7 +597,7 @@ async def batch_import_outlook(request: OutlookBatchImportRequest):
             # 检查是否已存在
             existing = db.query(EmailServiceModel).filter(
                 EmailServiceModel.service_type == "outlook",
-                EmailServiceModel.name == email
+                func.lower(EmailServiceModel.name) == email
             ).first()
 
             if existing:
