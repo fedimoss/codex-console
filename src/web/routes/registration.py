@@ -384,6 +384,20 @@ def _run_sync_registration_task(task_uuid: str, email_service_type: str, proxy: 
                         logger.info(f"Using GPTMail service from database: {db_service.name}")
                     else:
                         raise ValueError("No GPTMail service is available. Please add one on the email services page first.")
+                elif service_type == EmailServiceType.CLOUDMAIL:
+                    from ...database.models import EmailService as EmailServiceModel
+
+                    db_service = db.query(EmailServiceModel).filter(
+                        EmailServiceModel.service_type == "cloudmail",
+                        EmailServiceModel.enabled == True
+                    ).order_by(EmailServiceModel.priority.asc()).first()
+
+                    if db_service and db_service.config:
+                        config = _normalize_email_service_config(service_type, db_service.config, actual_proxy_url)
+                        crud.update_registration_task(db, task_uuid, email_service_id=db_service.id)
+                        logger.info(f"Using CloudMail service from database: {db_service.name}")
+                    else:
+                        raise ValueError("No CloudMail service is available. Please add one on the email services page first.")
                 elif service_type == EmailServiceType.FREEMAIL:
                     from ...database.models import EmailService as EmailServiceModel
 
@@ -1184,6 +1198,11 @@ async def get_available_email_services():
             "count": 0,
             "services": []
         },
+        "cloudmail": {
+            "available": False,
+            "count": 0,
+            "services": []
+        },
         "duck_mail": {
             "available": False,
             "count": 0,
@@ -1289,6 +1308,24 @@ async def get_available_email_services():
 
         result["temp_mail"]["count"] = len(temp_mail_services)
         result["temp_mail"]["available"] = len(temp_mail_services) > 0
+
+        cloudmail_services = db.query(EmailServiceModel).filter(
+            EmailServiceModel.service_type == "cloudmail",
+            EmailServiceModel.enabled == True
+        ).order_by(EmailServiceModel.priority.asc()).all()
+
+        for service in cloudmail_services:
+            config = service.config or {}
+            result["cloudmail"]["services"].append({
+                "id": service.id,
+                "name": service.name,
+                "type": "cloudmail",
+                "domain": config.get("domain"),
+                "priority": service.priority
+            })
+
+        result["cloudmail"]["count"] = len(cloudmail_services)
+        result["cloudmail"]["available"] = len(cloudmail_services) > 0
 
         duck_mail_services = db.query(EmailServiceModel).filter(
             EmailServiceModel.service_type == "duck_mail",

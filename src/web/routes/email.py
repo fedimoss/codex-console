@@ -8,11 +8,13 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from ...database import crud
 from ...database.session import get_db
 from ...database.models import EmailService as EmailServiceModel
 from ...database.models import Account as AccountModel
+from ...database.models import RegistrationTask as RegistrationTaskModel
 from ...services import EmailServiceFactory, EmailServiceType
 
 logger = logging.getLogger(__name__)
@@ -469,8 +471,19 @@ async def delete_email_service(service_id: int):
         if not service:
             raise HTTPException(status_code=404, detail="服务不存在")
 
-        db.delete(service)
-        db.commit()
+        try:
+            db.query(RegistrationTaskModel).filter(
+                RegistrationTaskModel.email_service_id == service_id
+            ).update(
+                {RegistrationTaskModel.email_service_id: None},
+                synchronize_session=False,
+            )
+            db.delete(service)
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            logger.warning("delete email service failed: service_id=%s error=%s", service_id, exc)
+            raise HTTPException(status_code=409, detail="这个邮箱服务还被其他记录占用，暂时不能删除。")
 
         return {"success": True, "message": f"服务 {service.name} 已删除"}
 

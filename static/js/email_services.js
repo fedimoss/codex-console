@@ -188,7 +188,6 @@ function switchAddSubType(subType) {
     elements.addMoemailFields.style.display = subType === 'moemail' ? '' : 'none';
     elements.addTempmailFields.style.display = (subType === 'tempmail' || subType === 'cloudmail') ? '' : 'none';
     elements.addGptmailFields.style.display = subType === 'gptmail' ? '' : 'none';
-    elements.addTempmailFields.style.display = subType === 'tempmail' ? '' : 'none';
     elements.addDuckmailFields.style.display = subType === 'duckmail' ? '' : 'none';
     elements.addFreemailFields.style.display = subType === 'freemail' ? '' : 'none';
     elements.addImapFields.style.display = subType === 'imap' ? '' : 'none';
@@ -200,7 +199,6 @@ function switchEditSubType(subType) {
     elements.editMoemailFields.style.display = subType === 'moemail' ? '' : 'none';
     elements.editTempmailFields.style.display = (subType === 'tempmail' || subType === 'cloudmail') ? '' : 'none';
     elements.editGptmailFields.style.display = subType === 'gptmail' ? '' : 'none';
-    elements.editTempmailFields.style.display = subType === 'tempmail' ? '' : 'none';
     elements.editDuckmailFields.style.display = subType === 'duckmail' ? '' : 'none';
     elements.editFreemailFields.style.display = subType === 'freemail' ? '' : 'none';
     elements.editImapFields.style.display = subType === 'imap' ? '' : 'none';
@@ -212,8 +210,14 @@ async function loadStats() {
     try {
         const data = await api.get('/email-services/stats');
         elements.outlookCount.textContent = data.outlook_count || 0;
-        elements.customCount.textContent = (data.custom_count || 0) + (data.temp_mail_count || 0) + (data.cloudmail_count || 0) + (data.duck_mail_count || 0) + (data.freemail_count || 0) + (data.imap_mail_count || 0);
-        elements.customCount.textContent = (data.custom_count || 0) + (data.gpt_mail_count || 0) + (data.temp_mail_count || 0) + (data.duck_mail_count || 0) + (data.freemail_count || 0) + (data.imap_mail_count || 0);
+        elements.customCount.textContent =
+            (data.custom_count || 0) +
+            (data.gpt_mail_count || 0) +
+            (data.temp_mail_count || 0) +
+            (data.cloudmail_count || 0) +
+            (data.duck_mail_count || 0) +
+            (data.freemail_count || 0) +
+            (data.imap_mail_count || 0);
         elements.tempmailStatus.textContent = data.tempmail_available ? '可用' : '不可用';
         elements.totalEnabled.textContent = data.enabled_count || 0;
     } catch (error) {
@@ -347,7 +351,7 @@ function getCustomServiceAddress(service) {
 // 加载自定义邮箱服务（moe_mail + temp_mail + cloudmail + duck_mail + freemail + imap_mail 合并）
 async function loadCustomServices() {
     try {
-        const [r1, r2, r3, r4, r5, r6] = await Promise.all([
+        const [r1, r2, r3, r4, r5, r6, r7] = await Promise.all([
             api.get('/email-services?service_type=moe_mail'),
             api.get('/email-services?service_type=gpt_mail'),
             api.get('/email-services?service_type=temp_mail'),
@@ -358,12 +362,12 @@ async function loadCustomServices() {
         ]);
         customServices = [
             ...(r1.services || []).map(s => ({ ...s, _subType: 'moemail' })),
-            ...(r2.services || []).map(s => ({ ...s, _subType: 'tempmail' })),
             ...(r2.services || []).map(s => ({ ...s, _subType: 'gptmail' })),
-            ...(r3.services || []).map(s => ({ ...s, _subType: 'cloudmail' })),
-            ...(r4.services || []).map(s => ({ ...s, _subType: 'duckmail' })),
-            ...(r5.services || []).map(s => ({ ...s, _subType: 'freemail' })),
-            ...(r6.services || []).map(s => ({ ...s, _subType: 'imap' }))
+            ...(r3.services || []).map(s => ({ ...s, _subType: 'tempmail' })),
+            ...(r4.services || []).map(s => ({ ...s, _subType: 'cloudmail' })),
+            ...(r5.services || []).map(s => ({ ...s, _subType: 'duckmail' })),
+            ...(r6.services || []).map(s => ({ ...s, _subType: 'freemail' })),
+            ...(r7.services || []).map(s => ({ ...s, _subType: 'imap' }))
         ];
 
         if (customServices.length === 0) {
@@ -488,20 +492,18 @@ async function handleAddCustom(e) {
         };
     } else if (subType === 'tempmail' || subType === 'cloudmail') {
         serviceType = subType === 'cloudmail' ? 'cloudmail' : 'temp_mail';
+        config = {
+            base_url: formData.get('tm_base_url'),
+            admin_password: formData.get('tm_admin_password'),
+            domain: formData.get('tm_domain'),
+            enable_prefix: true
+        };
     } else if (subType === 'gptmail') {
         serviceType = 'gpt_mail';
         config = {
             base_url: formData.get('gm_base_url'),
             api_key: formData.get('gm_api_key'),
             domain: formData.get('gm_domain')
-        };
-    } else if (subType === 'tempmail') {
-        serviceType = 'temp_mail';
-        config = {
-            base_url: formData.get('tm_base_url'),
-            admin_password: formData.get('tm_admin_password'),
-            domain: formData.get('tm_domain'),
-            enable_prefix: true
         };
     } else if (subType === 'duckmail') {
         serviceType = 'duck_mail';
@@ -691,10 +693,10 @@ async function editCustomService(id, subType) {
             document.getElementById('edit-custom-api-key').placeholder = service.config?.api_key ? '已设置，留空保持不变' : 'API Key';
             document.getElementById('edit-custom-domain').value = service.config?.default_domain || service.config?.domain || '';
         } else if (resolvedSubType === 'tempmail' || resolvedSubType === 'cloudmail') {
-            document.getElementById('edit-gm-base-url').value = service.config?.base_url || '';
-            document.getElementById('edit-gm-api-key').value = '';
-            document.getElementById('edit-gm-api-key').placeholder = service.config?.api_key ? 'Keep existing if left blank' : 'API Key';
-            document.getElementById('edit-gm-domain').value = service.config?.domain || '';
+            document.getElementById('edit-tm-base-url').value = service.config?.base_url || '';
+            document.getElementById('edit-tm-admin-password').value = '';
+            document.getElementById('edit-tm-admin-password').placeholder = service.config?.admin_password ? 'Keep existing if left blank' : 'Admin Password';
+            document.getElementById('edit-tm-domain').value = service.config?.domain || '';
         } else if (resolvedSubType === 'gptmail') {
             document.getElementById('edit-gm-base-url').value = service.config?.base_url || '';
             document.getElementById('edit-gm-api-key').value = '';

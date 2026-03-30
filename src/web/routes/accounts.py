@@ -3964,6 +3964,7 @@ def _build_inbox_config(db, service_type, email: str) -> dict:
     type_map = {
         EST.GPT_MAIL: "gpt_mail",
         EST.TEMP_MAIL: "temp_mail",
+        EST.CLOUDMAIL: "cloudmail",
         EST.DUCK_MAIL: "duck_mail",
         EST.FREEMAIL: "freemail",
         EST.IMAP_MAIL: "imap_mail",

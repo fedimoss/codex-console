@@ -98,6 +98,8 @@ class DatabaseSessionManager:
         - account_id 允许为空（账号删除后保留任务历史）
         - 增加 account_email 快照字段用于历史展示
         """
+        if self.engine.dialect.name != "sqlite":
+            return
         try:
             table_exists = conn.execute(
                 text("SELECT name FROM sqlite_master WHERE type='table' AND name='bind_card_tasks'")
@@ -194,15 +196,41 @@ class DatabaseSessionManager:
             conn.commit()
         except Exception as e:
             try:
+                conn.rollback()
+            except Exception:
+                pass
+            try:
                 conn.execute(text("PRAGMA foreign_keys=ON"))
                 conn.commit()
             except Exception:
                 pass
             logger.warning(f"迁移 bind_card_tasks 历史保留结构时出错: {e}")
 
+    def _normalize_migration(self, migration) -> dict:
+        """兼容历史迁移项格式。"""
+        if isinstance(migration, dict):
+            return migration
+        if isinstance(migration, (list, tuple)) and len(migration) == 3:
+            table_name, column_name, column_type = migration
+            normalized_type = str(column_type)
+            if self.engine.dialect.name == "postgresql":
+                normalized_type = (
+                    normalized_type
+                    .replace("DATETIME", "TIMESTAMP")
+                    .replace("BOOLEAN DEFAULT 0", "BOOLEAN DEFAULT FALSE")
+                    .replace("BOOLEAN DEFAULT 1", "BOOLEAN DEFAULT TRUE")
+                )
+            return {
+                "table": table_name,
+                "column": column_name,
+                "types": {"default": normalized_type},
+            }
+        raise TypeError(f"Unsupported migration format: {migration!r}")
+
     def _get_migration_column_type(self, migration: dict) -> str:
         """根据当前数据库方言获取列定义。"""
-        column_types = migration["types"]
+        normalized = self._normalize_migration(migration)
+        column_types = normalized["types"]
         return column_types.get(self.engine.dialect.name, column_types["default"])
 
     def _table_exists(self, conn, table_name: str) -> bool:
@@ -322,9 +350,14 @@ class DatabaseSessionManager:
                 conn.execute(text("UPDATE accounts SET email_service='moe_mail' WHERE email_service='custom_domain'"))
                 conn.commit()
             except Exception as e:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 logger.warning(f"迁移 custom_domain -> moe_mail 时出错: {e}")
 
             for migration in migrations:
+                migration = self._normalize_migration(migration)
                 table_name = migration["table"]
                 column_name = migration["column"]
                 try:
@@ -343,6 +376,10 @@ class DatabaseSessionManager:
                     conn.commit()
                     logger.info(f"成功添加列 {table_name}.{column_name}")
                 except Exception as e:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
                     logger.warning(f"迁移列 {table_name}.{column_name} 时出错: {e}")
 
             # 账户标签/池状态回填与索引
@@ -398,6 +435,10 @@ class DatabaseSessionManager:
                 ))
                 conn.commit()
             except Exception as e:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 logger.warning(f"迁移账户 role_tag/pool_state 索引时出错: {e}")
 
             # 最后处理 bind_card_tasks 结构升级（account_id 可空 + account_email 快照）
