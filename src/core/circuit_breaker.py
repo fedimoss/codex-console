@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
 
 from ..config.settings import get_settings
+from .timezone_utils import utcnow_naive
 from ..database import crud
 from ..database.session import get_db
 
@@ -22,7 +23,7 @@ _state_cache: Dict[str, Any] = {"loaded_ts": 0.0, "data": {}}
 
 
 def _utc_now() -> datetime:
-    return datetime.utcnow()
+    return utcnow_naive()
 
 
 def _now_iso() -> str:

@@ -3514,4 +3514,3 @@ async def execute_auto_team_invite(request: AutoTeamInviteRequest):
             if proxy_url:
                 breaker_record_failure("proxy_runtime", error_text)
             raise HTTPException(status_code=400, detail=error_text)
-

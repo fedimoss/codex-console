@@ -246,6 +246,7 @@
     </style>
 </head>
 <body>
+    {% include "partials/site_notice.html" %}
     <div class="container">
         <!-- 导航栏 -->
         <nav class="navbar">
@@ -359,6 +360,7 @@
                                 <a href="#" class="dropdown-item" id="batch-upload-cpa-item">☁️ 上传到 CPA</a>
                                 <a href="#" class="dropdown-item" id="batch-upload-sub2api-item">🔗 上传到 Sub2API</a>
                                 <a href="#" class="dropdown-item" id="batch-upload-tm-item">🚀 上传到 Team Manager</a>
+                                <a href="#" class="dropdown-item" id="batch-upload-new-api-item">🆕 上传到 new-api</a>
                             </div>
                         </div>
                         <button class="btn btn-danger" id="batch-delete-btn" disabled>
@@ -561,11 +563,9 @@
 
     <script src="/static/js/utils.js?v={{ static_version }}"></script>
     <script src="/static/js/accounts.js?v={{ static_version }}"></script>
+    {% include "partials/site_footer.html" %}
 </body>
 </html>
-
-
-
 
 
 

@@ -14,6 +14,7 @@ from curl_cffi import CurlMime
 from ...database.session import get_db
 from ...database.models import Account
 from ...config.settings import get_settings
+from ..timezone_utils import utcnow_naive
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +240,7 @@ def batch_upload_to_cpa(
             if success:
                 # 更新数据库状态
                 account.cpa_uploaded = True
-                account.cpa_uploaded_at = datetime.utcnow()
+                account.cpa_uploaded_at = utcnow_naive()
                 db.commit()
 
                 results["success_count"] += 1
@@ -259,6 +260,70 @@ def batch_upload_to_cpa(
                 })
 
     return results
+
+
+def list_cpa_auth_files(api_url: str, api_token: str) -> Tuple[bool, Any, str]:
+    """鍒楀嚭杩滅 CPA auth-files 娓呭崟銆?"""
+    if not api_url:
+        return False, None, "API URL 涓嶈兘涓虹┖"
+
+    if not api_token:
+        return False, None, "API Token 涓嶈兘涓虹┖"
+
+    list_url = _normalize_cpa_auth_files_url(api_url)
+    headers = _build_cpa_headers(api_token)
+
+    try:
+        response = cffi_requests.get(
+            list_url,
+            headers=headers,
+            proxies=None,
+            timeout=10,
+            impersonate="chrome110",
+        )
+        if response.status_code != 200:
+            return False, None, _extract_cpa_error(response)
+        return True, response.json(), "ok"
+    except cffi_requests.exceptions.ConnectionError as e:
+        return False, None, f"鏃犳硶杩炴帴鍒版湇鍔″櫒: {str(e)}"
+    except cffi_requests.exceptions.Timeout:
+        return False, None, "杩炴帴瓒呮椂锛岃妫€鏌ョ綉缁滈厤缃?"
+    except Exception as e:
+        logger.error("鑾峰彇 CPA auth-files 娓呭崟寮傚父: %s", e)
+        return False, None, f"鑾峰彇 auth-files 澶辫触: {str(e)}"
+
+
+def count_ready_cpa_auth_files(payload: Any) -> int:
+    """缁熻鍙敤浜庤ˉ璐у垽鏂殑璁よ瘉鏂囦欢鏁伴噺銆?"""
+    if isinstance(payload, dict):
+        files = payload.get("files", [])
+    elif isinstance(payload, list):
+        files = payload
+    else:
+        return 0
+
+    ready_count = 0
+    for item in files:
+        if not isinstance(item, dict):
+            continue
+
+        status = str(item.get("status", "")).strip().lower()
+        provider = str(item.get("provider") or item.get("type") or "").strip().lower()
+        disabled = bool(item.get("disabled", False))
+        unavailable = bool(item.get("unavailable", False))
+
+        if disabled or unavailable:
+            continue
+
+        if provider != "codex":
+            continue
+
+        if status and status not in {"ready", "active"}:
+            continue
+
+        ready_count += 1
+
+    return ready_count
 
 
 def test_cpa_connection(api_url: str, api_token: str, proxy: str = None) -> Tuple[bool, str]:

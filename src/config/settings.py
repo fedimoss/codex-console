@@ -48,7 +48,7 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
     ),
     "app_version": SettingDefinition(
         db_key="app.version",
-        default_value="2.0.0",
+        default_value="1.1.2",
         category=SettingCategory.GENERAL,
         description="应用版本"
     ),
@@ -316,9 +316,75 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
     ),
 
     # 邮箱服务配置
+    "registration_auto_enabled": SettingDefinition(
+        db_key="registration.auto.enabled",
+        default_value=False,
+        category=SettingCategory.REGISTRATION,
+        description="是否启用自动注册补货"
+    ),
+    "registration_auto_check_interval": SettingDefinition(
+        db_key="registration.auto.check_interval",
+        default_value=60,
+        category=SettingCategory.REGISTRATION,
+        description="自动注册库存检查间隔（秒）"
+    ),
+    "registration_auto_min_ready_auth_files": SettingDefinition(
+        db_key="registration.auto.min_ready_auth_files",
+        default_value=1,
+        category=SettingCategory.REGISTRATION,
+        description="自动注册保底可用认证文件数量"
+    ),
+    "registration_auto_email_service_type": SettingDefinition(
+        db_key="registration.auto.email_service_type",
+        default_value="tempmail",
+        category=SettingCategory.REGISTRATION,
+        description="自动注册使用的邮箱服务类型"
+    ),
+    "registration_auto_email_service_id": SettingDefinition(
+        db_key="registration.auto.email_service_id",
+        default_value=0,
+        category=SettingCategory.REGISTRATION,
+        description="自动注册绑定的邮箱服务 ID（0 表示自动选择）"
+    ),
+    "registration_auto_proxy": SettingDefinition(
+        db_key="registration.auto.proxy",
+        default_value="",
+        category=SettingCategory.REGISTRATION,
+        description="自动注册固定代理地址（留空则沿用系统策略）"
+    ),
+    "registration_auto_interval_min": SettingDefinition(
+        db_key="registration.auto.interval_min",
+        default_value=5,
+        category=SettingCategory.REGISTRATION,
+        description="自动注册批量任务最小启动间隔（秒）"
+    ),
+    "registration_auto_interval_max": SettingDefinition(
+        db_key="registration.auto.interval_max",
+        default_value=30,
+        category=SettingCategory.REGISTRATION,
+        description="自动注册批量任务最大启动间隔（秒）"
+    ),
+    "registration_auto_concurrency": SettingDefinition(
+        db_key="registration.auto.concurrency",
+        default_value=1,
+        category=SettingCategory.REGISTRATION,
+        description="自动注册批量任务并发数"
+    ),
+    "registration_auto_mode": SettingDefinition(
+        db_key="registration.auto.mode",
+        default_value="pipeline",
+        category=SettingCategory.REGISTRATION,
+        description="自动注册批量任务模式"
+    ),
+    "registration_auto_cpa_service_id": SettingDefinition(
+        db_key="registration.auto.cpa_service_id",
+        default_value=0,
+        category=SettingCategory.REGISTRATION,
+        description="自动注册监控并回传的 CPA 服务 ID"
+    ),
     "email_service_priority": SettingDefinition(
         db_key="email.service_priority",
-        default_value={"tempmail": 0, "outlook": 1, "moe_mail": 2},
+        default_value={"tempmail": 0, "yyds_mail": 1, "outlook": 2, "moe_mail": 3},
         category=SettingCategory.EMAIL,
         description="邮箱服务优先级"
     ),
@@ -329,6 +395,12 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
         default_value="https://api.tempmail.lol/v2",
         category=SettingCategory.TEMPMAIL,
         description="Tempmail API 地址"
+    ),
+    "tempmail_enabled": SettingDefinition(
+        db_key="tempmail.enabled",
+        default_value=True,
+        category=SettingCategory.TEMPMAIL,
+        description="是否启用 Tempmail.lol 渠道"
     ),
     "tempmail_timeout": SettingDefinition(
         db_key="tempmail.timeout",
@@ -341,6 +413,43 @@ SETTING_DEFINITIONS: Dict[str, SettingDefinition] = {
         default_value=3,
         category=SettingCategory.TEMPMAIL,
         description="Tempmail 最大重试次数"
+    ),
+    "yyds_mail_enabled": SettingDefinition(
+        db_key="yyds_mail.enabled",
+        default_value=False,
+        category=SettingCategory.TEMPMAIL,
+        description="是否启用 YYDS Mail 渠道"
+    ),
+    "yyds_mail_base_url": SettingDefinition(
+        db_key="yyds_mail.base_url",
+        default_value="https://maliapi.215.im/v1",
+        category=SettingCategory.TEMPMAIL,
+        description="YYDS Mail API 地址"
+    ),
+    "yyds_mail_api_key": SettingDefinition(
+        db_key="yyds_mail.api_key",
+        default_value="",
+        category=SettingCategory.TEMPMAIL,
+        description="YYDS Mail API Key",
+        is_secret=True
+    ),
+    "yyds_mail_default_domain": SettingDefinition(
+        db_key="yyds_mail.default_domain",
+        default_value="",
+        category=SettingCategory.TEMPMAIL,
+        description="YYDS Mail 默认域名"
+    ),
+    "yyds_mail_timeout": SettingDefinition(
+        db_key="yyds_mail.timeout",
+        default_value=30,
+        category=SettingCategory.TEMPMAIL,
+        description="YYDS Mail 超时时间（秒）"
+    ),
+    "yyds_mail_max_retries": SettingDefinition(
+        db_key="yyds_mail.max_retries",
+        default_value=3,
+        category=SettingCategory.TEMPMAIL,
+        description="YYDS Mail 最大重试次数"
     ),
 
     # 自定义域名邮箱配置
@@ -477,9 +586,24 @@ SETTING_TYPES: Dict[str, Type] = {
     "registration_sleep_min": int,
     "registration_sleep_max": int,
     "registration_entry_flow": str,
+    "registration_auto_enabled": bool,
+    "registration_auto_check_interval": int,
+    "registration_auto_min_ready_auth_files": int,
+    "registration_auto_email_service_type": str,
+    "registration_auto_email_service_id": int,
+    "registration_auto_proxy": str,
+    "registration_auto_interval_min": int,
+    "registration_auto_interval_max": int,
+    "registration_auto_concurrency": int,
+    "registration_auto_mode": str,
+    "registration_auto_cpa_service_id": int,
     "email_service_priority": dict,
+    "tempmail_enabled": bool,
     "tempmail_timeout": int,
     "tempmail_max_retries": int,
+    "yyds_mail_enabled": bool,
+    "yyds_mail_timeout": int,
+    "yyds_mail_max_retries": int,
     "tm_enabled": bool,
     "cpa_enabled": bool,
     "email_code_timeout": int,
@@ -662,7 +786,7 @@ class Settings(BaseModel):
 
     # 应用信息
     app_name: str = "OpenAI/Codex CLI 自动注册系统"
-    app_version: str = "2.0.0"
+    app_version: str = "1.1.2"
     debug: bool = False
 
     # 数据库配置
@@ -751,14 +875,32 @@ class Settings(BaseModel):
     registration_sleep_min: int = 5
     registration_sleep_max: int = 30
     registration_entry_flow: str = "native"
+    registration_auto_enabled: bool = False
+    registration_auto_check_interval: int = 60
+    registration_auto_min_ready_auth_files: int = 1
+    registration_auto_email_service_type: str = "tempmail"
+    registration_auto_email_service_id: int = 0
+    registration_auto_proxy: str = ""
+    registration_auto_interval_min: int = 5
+    registration_auto_interval_max: int = 30
+    registration_auto_concurrency: int = 1
+    registration_auto_mode: str = "pipeline"
+    registration_auto_cpa_service_id: int = 0
 
     # 邮箱服务配置
-    email_service_priority: Dict[str, int] = {"tempmail": 0, "outlook": 1, "moe_mail": 2}
+    email_service_priority: Dict[str, int] = {"tempmail": 0, "yyds_mail": 1, "outlook": 2, "moe_mail": 3}
 
     # Tempmail.lol 配置
     tempmail_base_url: str = "https://api.tempmail.lol/v2"
+    tempmail_enabled: bool = True
     tempmail_timeout: int = 30
     tempmail_max_retries: int = 3
+    yyds_mail_enabled: bool = False
+    yyds_mail_base_url: str = "https://maliapi.215.im/v1"
+    yyds_mail_api_key: Optional[SecretStr] = None
+    yyds_mail_default_domain: str = ""
+    yyds_mail_timeout: int = 30
+    yyds_mail_max_retries: int = 3
 
     # 自定义域名邮箱配置
     custom_domain_base_url: str = ""

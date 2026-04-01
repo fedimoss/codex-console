@@ -15,6 +15,7 @@
     </style>
 </head>
 <body>
+    {% include "partials/site_notice.html" %}
     <div class="container">
         <!-- 导航栏 -->
         <nav class="navbar">
@@ -350,6 +351,31 @@ user:pass@127.0.0.1:7890
                         </div>
                     </div>
                 </div>
+
+                <div class="card" style="margin-top: var(--spacing-lg);">
+                    <div class="card-header">
+                        <h3>🆕 new-api 服务</h3>
+                        <button class="btn btn-primary btn-sm" id="add-new-api-service-btn">+ 添加服务</button>
+                    </div>
+                    <div class="card-body" style="padding: 0;">
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:150px;">名称</th>
+                                        <th>API URL / 用户名</th>
+                                        <th style="width:80px;">状态</th>
+                                        <th style="width:60px;text-align:center;">优先级</th>
+                                        <th style="width:220px;">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="new-api-services-table">
+                                    <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">加载中...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Team Manager 服务编辑模态框 -->
@@ -391,6 +417,54 @@ user:pass@127.0.0.1:7890
                                 <button type="submit" class="btn btn-primary">💾 保存</button>
                                 <button type="button" class="btn btn-secondary" id="test-tm-service-btn">🔌 测试连接</button>
                                 <button type="button" class="btn btn-secondary" id="cancel-tm-service-btn">取消</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal" id="new-api-service-edit-modal">
+                <div class="modal-content" style="max-width: 500px;">
+                    <div class="modal-header">
+                        <h3 id="new-api-service-modal-title">添加 new-api 服务</h3>
+                        <button class="modal-close" id="close-new-api-service-modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="new-api-service-form">
+                            <input type="hidden" id="new-api-service-id">
+                            <div class="form-group">
+                                <label for="new-api-service-name">名称 *</label>
+                                <input type="text" id="new-api-service-name" placeholder="例如: 主服务" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="new-api-service-url">API URL *</label>
+                                <input type="text" id="new-api-service-url" placeholder="https://newapi.example.com" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="new-api-service-username">管理员用户名 *</label>
+                                <input type="text" id="new-api-service-username" placeholder="例如: admin" autocomplete="username">
+                            </div>
+                            <div class="form-group">
+                                <label for="new-api-service-password">管理员密码</label>
+                                <input type="password" id="new-api-service-password" placeholder="编辑时留空则保持原值" autocomplete="current-password">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="new-api-service-priority">优先级</label>
+                                    <input type="number" id="new-api-service-priority" value="0" min="0">
+                                    <p class="hint">数字越小优先级越高</p>
+                                </div>
+                                <div class="form-group">
+                                    <label>&nbsp;</label>
+                                    <label style="margin-top:10px;display:flex;align-items:center;gap:8px;">
+                                        <input type="checkbox" id="new-api-service-enabled" checked> 启用
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">💾 保存</button>
+                                <button type="button" class="btn btn-secondary" id="test-new-api-service-btn">🔌 测试连接</button>
+                                <button type="button" class="btn btn-secondary" id="cancel-new-api-service-btn">取消</button>
                             </div>
                         </form>
                     </div>
@@ -666,11 +740,9 @@ user:pass@127.0.0.1:7890
 
     <script src="/static/js/utils.js?v={{ static_version }}"></script>
     <script src="/static/js/settings.js?v={{ static_version }}"></script>
+    {% include "partials/site_footer.html" %}
 </body>
 </html>
-
-
-
 
 
 

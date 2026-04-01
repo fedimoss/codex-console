@@ -11,6 +11,8 @@ from typing import Dict, Optional, List, Callable, Any, Set, Tuple
 from collections import defaultdict
 from datetime import datetime
 
+from ..core.timezone_utils import utcnow_naive
+
 logger = logging.getLogger(__name__)
 
 # 全局线程池（支持最多 50 个并发注册任务）
@@ -127,7 +129,7 @@ class TaskManager:
                     "type": "log",
                     "task_uuid": task_uuid,
                     "message": log_message,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": utcnow_naive().isoformat()
                 })
                 # 发送成功后更新 sent_index
                 with _ws_lock:
@@ -146,7 +148,7 @@ class TaskManager:
             "type": "status",
             "task_uuid": task_uuid,
             "status": status,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utcnow_naive().isoformat(),
             **kwargs
         }
 
@@ -276,7 +278,7 @@ class TaskManager:
                     "type": "log",
                     "batch_id": batch_id,
                     "message": log_message,
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": utcnow_naive().isoformat()
                 })
                 # 发送成功后更新 sent_index
                 with _ws_lock:
@@ -316,7 +318,7 @@ class TaskManager:
                 await ws.send_json({
                     "type": "status",
                     "batch_id": batch_id,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": utcnow_naive().isoformat(),
                     **status
                 })
             except Exception as e:
@@ -430,7 +432,7 @@ class TaskManager:
                 "task_type": str(task_type or "unknown"),
                 "status": "pending",
                 "message": "任务已创建，等待执行",
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": utcnow_naive().isoformat(),
                 "started_at": None,
                 "finished_at": None,
                 "cancel_requested": False,
@@ -443,7 +445,7 @@ class TaskManager:
                 "result": None,
                 "error": None,
                 "details": [],
-                "_created_ts": datetime.utcnow().timestamp(),
+                "_created_ts": utcnow_naive().timestamp(),
             }
             tasks[task_key] = task
         else:
@@ -635,7 +637,7 @@ class TaskManager:
             running_set.add(task_key)
             task = self._ensure_domain_task_locked(domain=domain_key, task_id=task_key)
             task["status"] = "running"
-            task["started_at"] = task.get("started_at") or datetime.utcnow().isoformat()
+            task["started_at"] = task.get("started_at") or utcnow_naive().isoformat()
             task["message"] = task.get("message") or "任务执行中"
             return True, len(running_set), quota
 

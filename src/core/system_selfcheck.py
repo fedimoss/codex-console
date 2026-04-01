@@ -20,7 +20,7 @@ from curl_cffi import requests as cffi_requests
 from ..config.constants import AccountStatus
 from ..config.settings import get_settings
 from ..core.dynamic_proxy import get_proxy_url_for_task
-from ..core.timezone_utils import to_shanghai_iso
+from ..core.timezone_utils import to_shanghai_iso, utcnow_naive
 from ..database import crud
 from ..database.models import Account, BindCardTask, SelfCheckRun
 from ..database.session import get_db
@@ -75,7 +75,7 @@ REPAIR_CENTER_MAX_ROLLBACKS = 20
 
 
 def _utc_now() -> datetime:
-    return datetime.utcnow()
+    return utcnow_naive()
 
 
 def _now_iso() -> str:

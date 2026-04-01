@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, asc, func
 
+from ..core.timezone_utils import utcnow_naive
 from ..config.constants import (
     PoolState,
     account_label_to_role_tag,
@@ -23,6 +24,9 @@ from .models import (
     Proxy,
     CpaService,
     Sub2ApiService,
+    TeamManagerService,
+    NewApiService,
+    ScheduledRegistrationJob,
     BindCardTask,
     TeamInviteRecord,
     OperationAuditLog,
@@ -95,7 +99,7 @@ def create_account(
         pool_state_manual=normalized_pool_state_manual,
         priority=int(priority) if priority is not None else 50,
         last_used_at=last_used_at,
-        registered_at=datetime.utcnow()
+        registered_at=utcnow_naive()
     )
     db.add(db_account)
     db.commit()
@@ -488,7 +492,7 @@ def set_setting(
         db_setting.value = value
         db_setting.description = description or db_setting.description
         db_setting.category = category
-        db_setting.updated_at = datetime.utcnow()
+        db_setting.updated_at = utcnow_naive()
     else:
         db_setting = Setting(
             key=key,
@@ -689,7 +693,7 @@ def update_proxy_last_used(db: Session, proxy_id: int) -> bool:
     if not db_proxy:
         return False
 
-    db_proxy.last_used = datetime.utcnow()
+    db_proxy.last_used = utcnow_naive()
     db.commit()
     return True
 
@@ -873,6 +877,265 @@ def delete_sub2api_service(db: Session, service_id: int) -> bool:
     db.delete(svc)
     db.commit()
     return True
+
+
+# ============================================================================
+# new-api 鏈嶅姟 CRUD
+# ============================================================================
+
+def create_new_api_service(
+    db: Session,
+    name: str,
+    api_url: str,
+    username: str,
+    password: str,
+    enabled: bool = True,
+    priority: int = 0,
+) -> NewApiService:
+    """鍒涘缓 new-api 鏈嶅姟閰嶇疆"""
+    svc = NewApiService(
+        name=name,
+        api_url=api_url,
+        username=username,
+        password=password,
+        api_key='',
+        enabled=enabled,
+        priority=priority,
+    )
+    db.add(svc)
+    db.commit()
+    db.refresh(svc)
+    return svc
+
+
+def get_new_api_service_by_id(db: Session, service_id: int) -> Optional[NewApiService]:
+    """鎸?ID 鑾峰彇 new-api 鏈嶅姟"""
+    return db.query(NewApiService).filter(NewApiService.id == service_id).first()
+
+
+def get_new_api_services(
+    db: Session,
+    enabled: Optional[bool] = None,
+) -> List[NewApiService]:
+    """鑾峰彇 new-api 鏈嶅姟鍒楄〃"""
+    query = db.query(NewApiService)
+    if enabled is not None:
+        query = query.filter(NewApiService.enabled == enabled)
+    return query.order_by(asc(NewApiService.priority), asc(NewApiService.id)).all()
+
+
+def update_new_api_service(
+    db: Session,
+    service_id: int,
+    **kwargs,
+) -> Optional[NewApiService]:
+    """鏇存柊 new-api 鏈嶅姟閰嶇疆"""
+    svc = get_new_api_service_by_id(db, service_id)
+    if not svc:
+        return None
+    for key, value in kwargs.items():
+        if hasattr(svc, key):
+            setattr(svc, key, value)
+    db.commit()
+    db.refresh(svc)
+    return svc
+
+
+def delete_new_api_service(db: Session, service_id: int) -> bool:
+    """鍒犻櫎 new-api 鏈嶅姟閰嶇疆"""
+    svc = get_new_api_service_by_id(db, service_id)
+    if not svc:
+        return False
+    db.delete(svc)
+    db.commit()
+    return True
+
+
+# ============================================================================
+# 璁″垝娉ㄥ唽浠诲姟 CRUD
+# ============================================================================
+
+def create_scheduled_registration_job(
+    db: Session,
+    job_uuid: str,
+    name: str,
+    schedule_type: str,
+    schedule_config: Dict[str, Any],
+    registration_config: Dict[str, Any],
+    next_run_at: Optional[datetime],
+    enabled: bool = True,
+    timezone: str = 'local',
+    status: str = 'idle',
+) -> ScheduledRegistrationJob:
+    """鍒涘缓璁″垝娉ㄥ唽浠诲姟"""
+    job = ScheduledRegistrationJob(
+        job_uuid=job_uuid,
+        name=name,
+        enabled=enabled,
+        status=status,
+        schedule_type=schedule_type,
+        schedule_config=schedule_config,
+        registration_config=registration_config,
+        timezone=timezone,
+        next_run_at=next_run_at,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def get_scheduled_registration_job_by_uuid(db: Session, job_uuid: str) -> Optional[ScheduledRegistrationJob]:
+    """鎸?UUID 鑾峰彇璁″垝娉ㄥ唽浠诲姟"""
+    return db.query(ScheduledRegistrationJob).filter(ScheduledRegistrationJob.job_uuid == job_uuid).first()
+
+
+def get_scheduled_registration_job_by_id(db: Session, job_id: int) -> Optional[ScheduledRegistrationJob]:
+    """鎸?ID 鑾峰彇璁″垝娉ㄥ唽浠诲姟"""
+    return db.query(ScheduledRegistrationJob).filter(ScheduledRegistrationJob.id == job_id).first()
+
+
+def get_scheduled_registration_jobs(
+    db: Session,
+    enabled: Optional[bool] = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> List[ScheduledRegistrationJob]:
+    """鑾峰彇璁″垝娉ㄥ唽浠诲姟鍒楄〃"""
+    query = db.query(ScheduledRegistrationJob)
+    if enabled is not None:
+        query = query.filter(ScheduledRegistrationJob.enabled == enabled)
+    return query.order_by(desc(ScheduledRegistrationJob.created_at)).offset(skip).limit(limit).all()
+
+
+def get_due_scheduled_registration_jobs(db: Session, now: datetime) -> List[ScheduledRegistrationJob]:
+    """鑾峰彇宸插埌鏈熺殑璁″垝娉ㄥ唽浠诲姟"""
+    return db.query(ScheduledRegistrationJob).filter(
+        ScheduledRegistrationJob.enabled == True,
+        ScheduledRegistrationJob.is_running == False,
+        ScheduledRegistrationJob.next_run_at.isnot(None),
+        ScheduledRegistrationJob.next_run_at <= now,
+    ).order_by(asc(ScheduledRegistrationJob.next_run_at), asc(ScheduledRegistrationJob.id)).all()
+
+
+def get_running_scheduled_registration_jobs(db: Session) -> List[ScheduledRegistrationJob]:
+    """鑾峰彇姝ｅ湪鎵ц鐨勮鍒掓敞鍐屼换鍔?"""
+    return db.query(ScheduledRegistrationJob).filter(
+        ScheduledRegistrationJob.is_running == True,
+    ).order_by(asc(ScheduledRegistrationJob.updated_at), asc(ScheduledRegistrationJob.id)).all()
+
+
+def update_scheduled_registration_job(
+    db: Session,
+    job_uuid: str,
+    **kwargs,
+) -> Optional[ScheduledRegistrationJob]:
+    """鏇存柊璁″垝娉ㄥ唽浠诲姟"""
+    job = get_scheduled_registration_job_by_uuid(db, job_uuid)
+    if not job:
+        return None
+    for key, value in kwargs.items():
+        if hasattr(job, key):
+            setattr(job, key, value)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def delete_scheduled_registration_job(db: Session, job_uuid: str) -> bool:
+    """鍒犻櫎璁″垝娉ㄥ唽浠诲姟"""
+    job = get_scheduled_registration_job_by_uuid(db, job_uuid)
+    if not job:
+        return False
+    db.delete(job)
+    db.commit()
+    return True
+
+
+def claim_scheduled_registration_job(
+    db: Session,
+    job_uuid: str,
+    next_run_at: Optional[datetime],
+    now: datetime,
+) -> Optional[ScheduledRegistrationJob]:
+    """鎶㈠崰璁″垝娉ㄥ唽浠诲姟鎵ц鏉?"""
+    updated = db.query(ScheduledRegistrationJob).filter(
+        ScheduledRegistrationJob.job_uuid == job_uuid,
+        ScheduledRegistrationJob.enabled == True,
+        ScheduledRegistrationJob.is_running == False,
+    ).update({
+        'is_running': True,
+        'status': 'running',
+        'last_run_at': now,
+        'next_run_at': next_run_at,
+        'updated_at': now,
+    })
+    if not updated:
+        db.rollback()
+        return None
+    db.commit()
+    return get_scheduled_registration_job_by_uuid(db, job_uuid)
+
+
+def mark_scheduled_registration_job_success(
+    db: Session,
+    job_uuid: str,
+    now: datetime,
+    task_uuid: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    status: str = 'scheduled',
+) -> Optional[ScheduledRegistrationJob]:
+    """鏍囪璁″垝娉ㄥ唽浠诲姟鎵ц鎴愬姛"""
+    job = get_scheduled_registration_job_by_uuid(db, job_uuid)
+    if not job:
+        return None
+    job.is_running = False
+    job.status = status
+    job.last_success_at = now
+    job.last_error = None
+    job.run_count = (job.run_count or 0) + 1
+    job.consecutive_failures = 0
+    job.last_triggered_task_uuid = task_uuid
+    job.last_triggered_batch_id = batch_id
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def mark_scheduled_registration_job_failure(
+    db: Session,
+    job_uuid: str,
+    error_message: str,
+    now: datetime,
+) -> Optional[ScheduledRegistrationJob]:
+    """鏍囪璁″垝娉ㄥ唽浠诲姟鎵ц澶辫触"""
+    job = get_scheduled_registration_job_by_uuid(db, job_uuid)
+    if not job:
+        return None
+    job.is_running = False
+    job.status = 'failed'
+    job.last_error = error_message
+    job.run_count = (job.run_count or 0) + 1
+    job.consecutive_failures = (job.consecutive_failures or 0) + 1
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def mark_scheduled_registration_job_skipped(
+    db: Session,
+    job_uuid: str,
+    error_message: str,
+) -> Optional[ScheduledRegistrationJob]:
+    """鏍囪璁″垝娉ㄥ唽浠诲姟琚烦杩?"""
+    job = get_scheduled_registration_job_by_uuid(db, job_uuid)
+    if not job:
+        return None
+    job.last_error = error_message
+    job.status = 'idle' if job.enabled else 'paused'
+    db.commit()
+    db.refresh(job)
+    return job
 
 
 # ============================================================================

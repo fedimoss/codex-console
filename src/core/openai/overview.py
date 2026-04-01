@@ -19,6 +19,10 @@ from ...database.models import Account
 
 logger = logging.getLogger(__name__)
 
+
+class AccountDeactivatedError(RuntimeError):
+    """Raised when an account is deactivated while fetching overview data."""
+
 _USAGE_ENDPOINTS: Tuple[Tuple[str, str, bool], ...] = (
     # required=True: 核心稳定端点，失败计入 errors
     ("me", "https://chatgpt.com/backend-api/me", True),
