@@ -691,6 +691,8 @@ function buildCurrentRegistrationConfig() {
         throw new Error('请选择一个邮箱服务');
     }
 
+    isBatchMode = elements.regMode.value == "batch"
+
     const [emailServiceType, serviceId] = selectedValue.split(':');
     const baseConfig = {
         email_service_type: emailServiceType,
